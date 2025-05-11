@@ -42,21 +42,42 @@ class FloorPlanProcessor:
         self.room_keywords = ['room', 'office', 'class', 'library', 'lab', 'gym']
     
     def preprocess_image(self, image):
-        """Preprocess the floor plan image for analysis"""
+        """Preprocess the floor plan image for analysis with enhanced contrast handling"""
         # Convert to grayscale if not already
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         else:
             gray = image
         
+        # Check if image is too dark and enhance contrast if needed
+        if np.mean(gray) < 100:  # If image is generally dark
+            # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            gray = clahe.apply(gray)
+            
         # Apply Gaussian blur to reduce noise
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         
-        # Apply adaptive thresholding to handle different lighting conditions
-        binary = cv2.adaptiveThreshold(
+        # Try different thresholding methods and pick the best one
+        # Method 1: Adaptive thresholding
+        binary_adaptive = cv2.adaptiveThreshold(
             blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
             cv2.THRESH_BINARY_INV, 11, 2
         )
+        
+        # Method 2: Otsu's thresholding
+        _, binary_otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        
+        # Choose the method that gives clearer lines (more white pixels but not too many)
+        white_pixels_adaptive = np.sum(binary_adaptive == 255)
+        white_pixels_otsu = np.sum(binary_otsu == 255)
+        total_pixels = binary_adaptive.size
+        
+        # Select the binary image with better white pixel ratio (between 5-40% of image)
+        if 0.05 * total_pixels <= white_pixels_adaptive <= 0.4 * total_pixels:
+            binary = binary_adaptive
+        else:
+            binary = binary_otsu
         
         # Perform morphological operations to clean up the binary image
         kernel = np.ones((3, 3), np.uint8)
@@ -498,7 +519,15 @@ class FloorPlanProcessor:
             # Create a copy of the original image
             img = original_image.copy()
             
-            # Convert to RGBA if it's not already (handle both 3-channel and 4-channel images)
+            # Check if image is too dark (low average pixel value)
+            if len(img.shape) == 3:
+                avg_brightness = np.mean(img)
+                if avg_brightness < 80:  # Image is very dark
+                    # Convert to grayscale and invert for better visibility of annotations
+                    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.shape[2] == 3 else img
+                    img = cv2.cvtColor(cv2.bitwise_not(gray), cv2.COLOR_GRAY2RGB)
+            
+            # Convert to RGBA if it's not already
             if len(img.shape) == 3 and img.shape[2] == 3:
                 img_rgba = np.ones((img.shape[0], img.shape[1], 4), dtype=np.uint8) * 255
                 img_rgba[:, :, 0:3] = img
@@ -642,10 +671,26 @@ class FloorPlanProcessor:
             return np.array(img_pil)
         
         except Exception as e:
-            print(f"Error in generate_evacuation_map: {str(e)}")
+            st.error(f"Error generating evacuation map: {str(e)}")
             traceback.print_exc()
-            # Return original image as fallback
-            return original_image    
+            
+            # Create a blank white image as fallback with same dimensions
+            h, w = original_image.shape[:2]
+            fallback_img = np.ones((h, w, 4), dtype=np.uint8) * 255
+            
+            # Add error message to the image
+            fallback_pil = Image.fromarray(fallback_img)
+            draw = ImageDraw.Draw(fallback_pil)
+            try:
+                font = ImageFont.truetype("arial.ttf", 20)
+            except:
+                font = ImageFont.load_default()
+                
+            draw.text((20, 20), f"Error processing image: {str(e)}", fill=(255, 0, 0, 255), font=font)
+            draw.text((20, 50), "Try a different image or adjust the image quality", fill=(0, 0, 0, 255), font=font)
+            
+            # Convert back to numpy array
+            return np.array(fallback_pil)   
         
     def generate_text_instructions(self, rooms, routes, disaster_type):
         """Generate text-based evacuation instructions"""
@@ -685,69 +730,33 @@ def generate_disaster_guidance(disaster_type):
     
     return guidance.get(disaster_type, "Follow the evacuation routes indicated on the map. Walk, don't run. Stay calm and help others if safe to do so.")
 
-
-def create_sample_floor_plan():
-    """Creates a simple sample school floor plan"""
-    # Create a blank white image
-    img = np.ones((800, 1200, 4), dtype=np.uint8) * 255
+def use_custom_sample_image(custom_path=None):
+    """Uses a provided image path or creates a sample floor plan"""
+    if custom_path and os.path.exists(custom_path):
+        try:
+            # Try to load the custom image
+            img = cv2.imread(custom_path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            return img
+        except Exception as e:
+            st.error(f"Error loading custom sample image: {str(e)}")
     
-    # Draw outer building walls
-    cv2.rectangle(img, (50, 50), (1150, 750), (0, 0, 0, 255), 5)
+    # Hard-coded path to your sample floor plan
+    default_sample_path = r"sample_map.jpg"  # Update this path
+    if os.path.exists(default_sample_path):
+        try:
+            img = cv2.imread(default_sample_path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            return img
+        except Exception as e:
+            st.error(f"Error loading default sample image: {str(e)}")
     
-    # Draw interior walls
-    # Main hallway (horizontal)
-    cv2.line(img, (50, 400), (1150, 400), (0, 0, 0, 255), 3)
-    
-    # Vertical corridors
-    cv2.line(img, (300, 50), (300, 750), (0, 0, 0, 255), 3)
-    cv2.line(img, (600, 50), (600, 750), (0, 0, 0, 255), 3)
-    cv2.line(img, (900, 50), (900, 750), (0, 0, 0, 255), 3)
-    
-    # Room dividers (top section)
-    for x in range(150, 1050, 150):
-        cv2.line(img, (x, 50), (x, 400), (0, 0, 0, 255), 2)
-    
-    # Room dividers (bottom section)
-    for x in range(150, 1050, 150):
-        cv2.line(img, (x, 400), (x, 750), (0, 0, 0, 255), 2)
-    
-    # Draw exits
-    # Main entrance (bottom)
-    cv2.rectangle(img, (575, 745), (625, 760), (0, 255, 0, 255), -1)
-    cv2.putText(img, "Main Exit", (550, 780), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0, 255), 1)
-    
-    # Emergency exits
-    cv2.rectangle(img, (45, 375), (60, 425), (0, 255, 0, 255), -1)
-    cv2.putText(img, "West Exit", (20, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0, 255), 1)
-    
-    cv2.rectangle(img, (1140, 375), (1155, 425), (0, 255, 0, 255), -1)
-    cv2.putText(img, "East Exit", (1120, 350), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0, 255), 1)
-    
-    cv2.rectangle(img, (575, 40), (625, 55), (0, 255, 0, 255), -1)
-    cv2.putText(img, "North Exit", (560, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0, 255), 1)
-    
-    # Label rooms
-    room_centers = [
-        # Top row of rooms
-        (75, 225, "Room 1"), (225, 225, "Room 2"), (375, 225, "Room 3"),
-        (525, 225, "Room 4"), (675, 225, "Room 5"), (825, 225, "Room 6"),
-        (1075, 225, "Room 7"),
-        
-        # Bottom row of rooms
-        (75, 575, "Room 8"), (225, 575, "Room 9"), (375, 575, "Room 10"),
-        (525, 575, "Room 11"), (675, 575, "Room 12"), (825, 575, "Room 13"),
-        (1075, 575, "Room 14"),
-    ]
-    
-    for x, y, label in room_centers:
-        cv2.putText(img, label, (x-30, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0, 255), 1)
-    
-    # Label special areas
-    cv2.putText(img, "Main Hallway", (600, 420), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0, 255), 1)
-    
-    # Add a title
-    cv2.putText(img, "Sample School Floor Plan", (500, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0, 255), 2)
-    
+    # Create a simple sample as fallback - you could keep a simplified version
+    # of your existing code here or return a blank image with text
+    img = np.ones((800, 1200, 3), dtype=np.uint8) * 255
+    # Add text indicating sample image couldn't be loaded
+    cv2.putText(img, "Sample floor plan not available", (400, 400), 
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
     return img
 
 
@@ -766,9 +775,10 @@ def main():
         if uploaded_file is not None:
             process_button = st.button("Generate Evacuation Plan")
         
-        # Sample floor plan option
+        # Sample floor plan options
         st.header("Don't have a floor plan?")
-        use_sample = st.button("Use Sample Floor Plan")
+        use_default_sample = st.button("Use A Sample Floor Plan")
+
     
     # Main content area
     if uploaded_file is not None:
@@ -816,7 +826,7 @@ def main():
                     
                     # Display the evacuation map
                     st.subheader("Visual Evacuation Map")
-                    st.image(evacuation_map, caption=f"{disaster_type} Evacuation Plan", use_column_width=True)
+                    st.image(evacuation_map, caption=f"{disaster_type} Evacuation Plan", use_container_width=True)
                     
                     # Display text instructions
                     st.subheader("Evacuation Instructions")
@@ -827,7 +837,7 @@ def main():
                     st.subheader("Disaster-Specific Guidance")
                     st.write(guidance)
                     
-# Download options
+                    # Download options
                     map_path = os.path.join("temp", "evacuation_map.png")
                     cv2.imwrite(map_path, cv2.cvtColor(evacuation_map, cv2.COLOR_RGB2BGR))
                     
@@ -865,14 +875,14 @@ def main():
                 except Exception as e:
                     st.error(f"Error processing floor plan: {str(e)}")
     
-    elif use_sample:
+    elif use_default_sample:
         # Generate and display sample floor plan
         with st.spinner("Generating sample floor plan and evacuation plan..."):
             try:
-                # Create sample floor plan
-                sample_img = create_sample_floor_plan()
+                # Use the sample floor plan image
+                sample_img = use_custom_sample_image()  # This function will use the default sample
                 
-                # Process the sample image
+                # Continue with existing processing...
                 processor = FloorPlanProcessor()
                 
                 # Preprocess image
@@ -899,14 +909,14 @@ def main():
                 
                 # Display original sample floor plan
                 st.header("Sample School Floor Plan")
-                st.image(sample_img, caption="Sample School Floor Plan", use_column_width=True)
+                st.image(sample_img, caption="Sample School Floor Plan", use_container_width=True)
                 
                 # Display results
                 st.header(f"Sample Evacuation Plan for {disaster_type}")
                 
                 # Display the evacuation map
                 st.subheader("Visual Evacuation Map")
-                st.image(evacuation_map, caption=f"{disaster_type} Evacuation Plan", use_column_width=True)
+                st.image(evacuation_map, caption=f"{disaster_type} Evacuation Plan", use_container_width=True)
                 
                 # Display text instructions
                 st.subheader("Evacuation Instructions")
