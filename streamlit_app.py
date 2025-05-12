@@ -8,6 +8,7 @@ from pathfinding.core.diagonal_movement import DiagonalMovement
 from pathfinding.core.grid import Grid
 from pathfinding.finder.a_star import AStarFinder
 from sklearn.cluster import DBSCAN
+import traceback
 
 # Set page configuration
 st.set_page_config(
@@ -334,37 +335,45 @@ class FloorPlanProcessor:
         
         return rooms
     
-    def create_grid(self, binary_image):
+    def create_grid(self, binary_image, rooms): # Add rooms as parameter
         """Create a grid representation of the floor plan for pathfinding"""
         # Invert the binary image for pathfinding (walls=0, free space=1)
         walkable_grid = (binary_image == 0).astype(int)
-        
-        # Perform morphological operations to find corridors
+
+        # Explicitly mark rooms as non-walkable
+        for room in rooms:
+            x, y, w, h = room['x'], room['y'], room['width'], room['height']
+            # Ensure bounds are within the image dimensions
+            x2, y2 = min(x + w, walkable_grid.shape[1]), min(y + h, walkable_grid.shape[0])
+            walkable_grid[y:y2, x:x2] = 0 # Mark the room area as non-walkable
+
+        # Perform morphological operations to find corridors (apply AFTER marking rooms)
         kernel = np.ones((15, 15), np.uint8)  # Larger kernel to identify main paths
         corridors = cv2.morphologyEx(walkable_grid.astype(np.uint8), cv2.MORPH_OPEN, kernel)
-        
+
         # Enhance corridors
         walkable_grid = np.maximum(walkable_grid, corridors)
-        
+
+        # ... rest of your scaling code ...
         # Scale down the grid for efficiency
         h, w = walkable_grid.shape
         grid_scale = max(1, min(w, h) // 100)  # Adaptive scaling based on image size
-        
+
         scaled_h, scaled_w = h // grid_scale, w // grid_scale
         grid_data = np.zeros((scaled_h, scaled_w))
-        
+
         for i in range(scaled_h):
             for j in range(scaled_w):
                 # Check the corresponding region in the original image
                 region = walkable_grid[
-                    i*grid_scale:min((i+1)*grid_scale, h), 
+                    i*grid_scale:min((i+1)*grid_scale, h),
                     j*grid_scale:min((j+1)*grid_scale, w)
                 ]
-                
+
                 # If more than 50% of pixels are walkable, mark cell as walkable
                 if np.mean(region) > 0.5:
                     grid_data[i, j] = 1
-        
+
         return grid_data, grid_scale
     
     def calculate_evacuation_routes(self, grid_data, rooms, exits, grid_scale):
@@ -516,34 +525,41 @@ class FloorPlanProcessor:
     def generate_evacuation_map(self, original_image, rooms, exits, routes, disaster_type):
         """Generate a clearer visual evacuation map with routes marked"""
         try:
-            # Create a copy of the original image
-            img = original_image.copy()
-            
-            # Check if image is too dark (low average pixel value)
-            if len(img.shape) == 3:
+            # Ensure image is in color (3 channels) for consistent processing
+            if len(original_image.shape) == 2: # If it's grayscale (2D)
+                img = cv2.cvtColor(original_image, cv2.COLOR_GRAY2RGB) # Convert to RGB
+            else:
+                img = original_image.copy() # Otherwise, just copy the original
+
+            # Now, the rest of your code can assume 'img' is 3 channels or more
+            # Check if image is too dark (low average pixel value) - apply to RGB
+            if len(img.shape) == 3: # Ensure it's 3 channels (which it should be now)
                 avg_brightness = np.mean(img)
                 if avg_brightness < 80:  # Image is very dark
-                    # Convert to grayscale and invert for better visibility of annotations
-                    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY) if img.shape[2] == 3 else img
+                    # Convert to grayscale, invert, then back to RGB
+                    gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
                     img = cv2.cvtColor(cv2.bitwise_not(gray), cv2.COLOR_GRAY2RGB)
-            
+
             # Convert to RGBA if it's not already
+            # This block should now work reliably as img is at least 3 channels
             if len(img.shape) == 3 and img.shape[2] == 3:
                 img_rgba = np.ones((img.shape[0], img.shape[1], 4), dtype=np.uint8) * 255
                 img_rgba[:, :, 0:3] = img
                 img_rgba[:, :, 3] = 255
                 img = img_rgba
-            
+
             # Brighten the image slightly to make annotations more visible
+            # This should also be safe now that img is at least 3 channels
             img_brightened = np.minimum(img[:, :, :3] * 1.2, 255).astype(np.uint8)
-            
+
+            # ... rest of your generate_evacuation_map function ...
             # Ensure consistent 4-channel output
             if img_brightened.shape[2] == 3:
                 output_img = np.ones((img_brightened.shape[0], img_brightened.shape[1], 4), dtype=np.uint8) * 255
                 output_img[:, :, :3] = img_brightened
             else:
                 output_img = img_brightened
-                
+
             # Convert to PIL Image for drawing
             img_pil = Image.fromarray(output_img)
             draw = ImageDraw.Draw(img_pil)
@@ -801,7 +817,7 @@ def main():
                     exits = processor.detect_exits(img_array, binary_image)
                     
                     # Create grid for pathfinding
-                    grid_data, grid_scale = processor.create_grid(binary_image)
+                    grid_data, grid_scale = processor.create_grid(binary_image, rooms)
                     
                     # Calculate evacuation routes
                     routes = processor.calculate_evacuation_routes(grid_data, rooms, exits, grid_scale)
@@ -837,7 +853,7 @@ def main():
                     st.subheader("Disaster-Specific Guidance")
                     st.write(guidance)
                     
-                    # Download options
+# Download options
                     map_path = os.path.join("temp", "evacuation_map.png")
                     cv2.imwrite(map_path, cv2.cvtColor(evacuation_map, cv2.COLOR_RGB2BGR))
                     
@@ -893,7 +909,7 @@ def main():
                 exits = processor.detect_exits(sample_img, binary_image)
                 
                 # Create grid for pathfinding
-                grid_data, grid_scale = processor.create_grid(binary_image)
+                grid_data, grid_scale = processor.create_grid(binary_image, rooms)
                 
                 # Calculate evacuation routes
                 routes = processor.calculate_evacuation_routes(grid_data, rooms, exits, grid_scale)
