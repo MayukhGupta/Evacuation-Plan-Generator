@@ -12,7 +12,7 @@ import traceback
 
 # Set page configuration
 st.set_page_config(
-    page_title="School Evacuation Plan Generator",
+    page_title="SHIELD - Strategic Help In Emergency and Local Disasters",
     page_icon="🏫",
     layout="wide",
 )
@@ -778,7 +778,7 @@ def use_custom_sample_image(custom_path=None):
 
 # Main application function
 def main():
-    st.title("School Evacuation Plan Generator")
+    st.title("SHIELD - Strategic Help In Emergency and Local Disasters") 
     
     # Sidebar
     with st.sidebar:
@@ -980,7 +980,7 @@ def main():
     
     else:
         # Display app description when no file is uploaded
-        st.header("Welcome to the School Evacuation Plan Generator")
+        st.header("School Evacuation Plan Generator")
         st.write("""
         This application helps school administrators quickly generate evacuation plans for various disaster scenarios.
         
