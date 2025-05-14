@@ -1,3 +1,4 @@
+# pip install streamlit opencv-python numpy Pillow python-pathfinding scikit-learn
 import streamlit as st
 import cv2
 import numpy as np
@@ -12,7 +13,7 @@ import traceback
 
 # Set page configuration
 st.set_page_config(
-    page_title="SHIELD - Strategic Help In Emergency and Local Disasters",
+    page_title="SHIELD",
     page_icon="🏫",
     layout="wide",
 )
@@ -746,6 +747,106 @@ def generate_disaster_guidance(disaster_type):
     
     return guidance.get(disaster_type, "Follow the evacuation routes indicated on the map. Walk, don't run. Stay calm and help others if safe to do so.")
 
+def detailed_disaster_guidelines(disaster_type):
+    st.subheader(f"Guidelines for Disaster Preparedness and Resilience: {disaster_type}")
+
+    guidelines = {
+        "Earthquake": {
+            "Preparedness": [
+                "Conduct public awareness campaigns on earthquake safety (e.g., Drop, Cover, Hold).",
+                "Organize regular mock drills and earthquake response training.",
+                "Encourage assembling emergency kits with essentials (water, food, first aid, flashlight).",
+                "Identify and mark safe zones in buildings (under sturdy furniture, inner walls, door frames)."
+            ],
+            "Resilience Planning": [
+                "Promote earthquake-resistant construction using proper building codes.",
+                "Retrofit old buildings to meet current seismic standards.",
+                "Create community-level emergency response teams.",
+                "Install early warning systems and promote their use."
+            ]
+        },
+        "Fire": {
+            "Preparedness": [
+                "Install smoke alarms and fire extinguishers in accessible locations.",
+                "Train occupants on fire evacuation procedures and fire extinguisher usage.",
+                "Conduct regular fire drills and test alarm systems.",
+                "Ensure clear access to emergency exits."
+            ],
+            "Resilience Planning": [
+                "Use fire-resistant building materials where possible.",
+                "Maintain fire breaks and emergency vehicle access zones.",
+                "Develop partnerships with local fire departments.",
+                "Keep updated building evacuation and floor plans accessible."
+            ]
+        },
+        "Flood": {
+            "Preparedness": [
+                "Educate people in flood-prone areas about risks and evacuation routes.",
+                "Assemble waterproof emergency kits with clean water, food, and sanitation items.",
+                "Develop and communicate clear evacuation plans.",
+                "Maintain proper drainage and desilting of water channels."
+            ],
+            "Resilience Planning": [
+                "Promote elevated housing in flood-prone regions.",
+                "Implement effective rainwater harvesting and stormwater management systems.",
+                "Restrict construction in low-lying or floodplain zones.",
+                "Engage communities in flood-risk mapping and planning."
+            ]
+        },
+        "Active Threat/Lockdown": {
+            "Preparedness": [
+                "Develop and practice lockdown drills regularly.",
+                "Establish communication protocols for emergencies.",
+                "Train staff and students on recognizing threat signals and appropriate responses.",
+                "Ensure secure locking systems for rooms and common areas."
+            ],
+            "Resilience Planning": [
+                "Install surveillance and controlled access systems.",
+                "Collaborate with local law enforcement for rapid response.",
+                "Prepare psychological support resources for post-incident recovery.",
+                "Create layered safety plans for different threat levels."
+            ]
+        },
+        "Tornado/Cyclone": {
+            "Preparedness": [
+                "Teach cyclone warning signs and identify nearby cyclone shelters.",
+                "Secure loose objects and reinforce windows/doors.",
+                "Conduct evacuation and response drills in vulnerable areas.",
+                "Prepare emergency go-bags for families."
+            ],
+            "Resilience Planning": [
+                "Promote wind-resistant building designs and materials.",
+                "Restore mangroves and build sea walls to reduce impact.",
+                "Train local emergency volunteers.",
+                "Ensure robust cyclone alert systems."
+            ]
+        },
+        "Chemical Spill": {
+            "Preparedness": [
+                "Educate people on the hazards of common chemicals in use.",
+                "Store hazardous materials properly and maintain Material Safety Data Sheets (MSDS).",
+                "Conduct spill response training and simulation exercises.",
+                "Establish emergency contact chains and evacuation protocols."
+            ],
+            "Resilience Planning": [
+                "Install spill containment systems and ventilation controls.",
+                "Label and segregate chemicals clearly in storage.",
+                "Coordinate with emergency services and hazmat teams.",
+                "Maintain first aid kits and decontamination stations."
+            ]
+        }
+    }
+
+    selected = guidelines.get(disaster_type)
+    if selected:
+        for category, items in selected.items():
+            st.markdown(f"**{category}**")
+            for item in items:
+                st.markdown(f"- {item}")
+    else:
+        st.info("No detailed guidelines available for this disaster.")
+
+
 def use_custom_sample_image(custom_path=None):
     """Uses a provided image path or creates a sample floor plan"""
     if custom_path and os.path.exists(custom_path):
@@ -778,7 +879,7 @@ def use_custom_sample_image(custom_path=None):
 
 # Main application function
 def main():
-    st.title("SHIELD - Strategic Help In Emergency and Local Disasters") 
+    st.title("SHIELD - Strategic Help In Emergency and Local Disasters")
     
     # Sidebar
     with st.sidebar:
@@ -842,7 +943,7 @@ def main():
                     
                     # Display the evacuation map
                     st.subheader("Visual Evacuation Map")
-                    st.image(evacuation_map, caption=f"{disaster_type} Evacuation Plan", use_container_width=True)
+                    st.image(evacuation_map, caption=f"{disaster_type} Evacuation Plan")
                     
                     # Display text instructions
                     st.subheader("Evacuation Instructions")
@@ -850,10 +951,11 @@ def main():
                         st.markdown(f"**{exit_info['text']}**")
                     
                     # Display disaster-specific guidance
-                    st.subheader("Disaster-Specific Guidance")
+                    st.subheader("Immediate Steps To Be Taken:")
                     st.write(guidance)
-                    
-# Download options
+                    detailed_disaster_guidelines(disaster_type)
+                   
+                    # Download options
                     map_path = os.path.join("temp", "evacuation_map.png")
                     cv2.imwrite(map_path, cv2.cvtColor(evacuation_map, cv2.COLOR_RGB2BGR))
                     
@@ -925,14 +1027,14 @@ def main():
                 
                 # Display original sample floor plan
                 st.header("Sample School Floor Plan")
-                st.image(sample_img, caption="Sample School Floor Plan", use_container_width=True)
+                st.image(sample_img, caption="Sample School Floor Plan")
                 
                 # Display results
                 st.header(f"Sample Evacuation Plan for {disaster_type}")
                 
                 # Display the evacuation map
                 st.subheader("Visual Evacuation Map")
-                st.image(evacuation_map, caption=f"{disaster_type} Evacuation Plan", use_container_width=True)
+                st.image(evacuation_map, caption=f"{disaster_type} Evacuation Plan")
                 
                 # Display text instructions
                 st.subheader("Evacuation Instructions")
@@ -940,8 +1042,9 @@ def main():
                     st.markdown(f"**{exit_info['text']}**")
                 
                 # Display disaster-specific guidance
-                st.subheader("Disaster-Specific Guidance")
+                st.subheader("Immediate Steps To Be Taken:")
                 st.write(guidance)
+                detailed_disaster_guidelines(disaster_type)
                 
                 # Download options
                 map_path = os.path.join("temp", "sample_evacuation_map.png")
